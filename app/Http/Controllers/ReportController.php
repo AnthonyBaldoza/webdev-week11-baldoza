@@ -42,14 +42,14 @@ class ReportController extends Controller
             ->orderBy('starts_at')
             ->get();
 
-        // 6. Notes of the chosen event and chosen venue
-        $eventNotes = $event->notes;
-        $venueNotes = $venue->notes;
+                // 6. Notes of the chosen event and chosen venue
+            $eventNotes = $event->notes()->get();
+            $venueNotes = $venue->notes()->get();
 
-        // 7. Owner of the chosen note
-        $owner = $note->noteable;
-        $ownerName = $owner instanceof Event ? $owner->title : $owner->name;
-        $ownerKind = class_basename($note->noteable_type);
+            // 7. Owner of the chosen note
+            $owner = $note->load('noteable')->noteable;
+            $ownerName = $owner instanceof Event ? $owner->title : $owner->name;
+            $ownerKind = class_basename($note->noteable_type);
 
         return view('report', compact(
             'allVenues', 'allEvents', 'allParticipants', 'allNotes',
