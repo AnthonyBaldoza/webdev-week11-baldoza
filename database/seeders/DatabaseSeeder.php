@@ -3,67 +3,108 @@
 namespace Database\Seeders;
 
 use App\Models\Event;
-use App\Models\Participant;
 use App\Models\Venue;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 
 class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // 3 venues
-        $venues = collect([
-            ['name' => 'Main Auditorium', 'address' => 'Admin Building, Ground Floor', 'capacity' => 500],
-            ['name' => 'Gymnasium', 'address' => 'Sports Complex', 'capacity' => 800],
-            ['name' => 'Function Hall', 'address' => 'Student Center, 2nd Floor', 'capacity' => 150],
-        ])->map(fn ($v) => Venue::create($v));
+        $now = now();
 
-        // 6 events, created through the venue relationship
-        $events = collect([
-            [0, 'Freshmen Orientation', '2026-11-10 09:00:00'],
-            [0, 'Tech Talk: Intro to Laravel', '2026-11-12 14:00:00'],
-            [1, 'Intramurals Opening', '2026-11-15 08:00:00'],
-            [1, 'Chess Tournament', '2026-11-18 09:00:00'],
-            [2, 'Career Fair', '2026-11-20 10:00:00'],
-            [2, 'Research Colloquium', '2026-11-25 13:00:00'],
-        ])->map(fn ($e) => $venues[$e[0]]->events()->create([
-            'title' => $e[1],
-            'starts_at' => $e[2],
-        ]));
-
-        // 8 participants
-        $participants = collect([
-            ['Juan Dela Cruz', 'juan@example.com'],
-            ['Maria Santos', 'maria@example.com'],
-            ['Pedro Reyes', 'pedro@example.com'],
-            ['Ana Garcia', 'ana@example.com'],
-            ['Jose Ramos', 'jose@example.com'],
-            ['Liza Mendoza', 'liza@example.com'],
-            ['Carlo Bautista', 'carlo@example.com'],
-            ['Rhea Villanueva', 'rhea@example.com'],
-        ])->map(fn ($p) => Participant::create(['name' => $p[0], 'email' => $p[1]]));
-
-        // 12 registrations (event index, participant index, status)
-        $registrations = [
-            [0, 0, 'registered'], [0, 1, 'registered'], [0, 2, 'waitlisted'],
-            [1, 0, 'registered'], [1, 3, 'registered'],
-            [2, 4, 'waitlisted'], [2, 5, 'registered'],
-            [3, 6, 'registered'], [3, 7, 'registered'],
-            [4, 1, 'registered'], [4, 2, 'registered'],
-            [5, 3, 'waitlisted'],
-        ];
-
-        foreach ($registrations as [$e, $p, $status]) {
-            $events[$e]->participants()->attach($participants[$p]->id, ['status' => $status]);
+        // 10 venues
+        $venueNames = ['Main Auditorium', 'Gymnasium', 'Function Hall', 'Library Atrium', 'Science Lab',
+            'Open Grounds', 'Student Center', 'Chapel', 'Computer Lab', 'Covered Court'];
+        $venueIds = [];
+        foreach ($venueNames as $name) {
+            $venueIds[] = Venue::create([
+                'name' => $name,
+                'address' => 'PUP Calauan Campus',
+                'capacity' => random_int(100, 800),
+            ])->id;
         }
 
-        // 6 notes: 3 on events, 3 on venues
-        $events[0]->notes()->create(['body' => 'Bring a valid school ID.']);
-        $events[3]->notes()->create(['body' => 'Bring your own chess clock.']);
-        $events[4]->notes()->create(['body' => 'Company booths open at 10 AM.']);
+        // 20,000 events, inserted in chunks of 1,000
+        $phrases = [
+            'Join us for a day of learning and collaboration.',
+            'Open to all students and faculty members.',
+            'Bring a valid school ID for entry.',
+            'Refreshments will be served during the break.',
+            'Guest speakers from local industry will share their experience.',
+            'Hands-on workshop with limited slots.',
+            'Certificates will be given to all attendees.',
+            'Come early to get the best seats.',
+            'A friendly competition with prizes for the winners.',
+            'Network with alumni and future employers.',
+        ];
+        $dressCodes = ['casual', 'formal', 'smart casual', 'uniform', 'business'];
+        $tagPool = ['music', 'sports', 'tech', 'career', 'art', 'food', 'workshop', 'seminar'];
 
-        $venues[0]->notes()->create(['body' => 'Projector needs a 15-minute warm-up.']);
-        $venues[1]->notes()->create(['body' => 'No outside food allowed.']);
-        $venues[2]->notes()->create(['body' => 'Air conditioning is available.']);
+        $rows = [];
+        for ($i = 1; $i <= 20000; $i++) {
+            $description = implode(' ', Arr::random($phrases, 3));
+            if ($i % 200 === 0) {                 // rare word: 100 events = 0.5%
+                $description .= ' Includes a telescope session.';
+            }
+            $dressCode = ($i % 150 === 0)         // rare value: 133 events = 0.67%
+                ? 'costume'
+                : Arr::random($dressCodes);
+
+            $rows[] = [
+                'venue_id' => $venueIds[array_rand($venueIds)],
+                'title' => 'Campus Event #' . $i,
+                'starts_at' => $now->copy()->addDays(random_int(-30, 90))->addHours(random_int(0, 23)),
+                'description' => $description,
+                'details' => json_encode([
+                    'dress_code' => $dressCode,
+                    'capacity' => random_int(30, 500),
+                    'tags' => Arr::random($tagPool, 2),
+                ]),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            if (count($rows) === 1000) {
+                DB::table('events')->insert($rows);
+                $rows = [];
+            }
+        }
+
+        // 200 participants
+        $participants = [];
+        for ($i = 1; $i <= 200; $i++) {
+            $participants[] = [
+                'name' => 'Participant ' . $i,
+                'email' => "participant{$i}@example.com",
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        DB::table('participants')->insert($participants);
+
+        // Registrations for the first 100 events (6 each = 600 rows)
+        $eventIds = DB::table('events')->orderBy('id')->limit(100)->pluck('id');
+        $participantIds = DB::table('participants')->pluck('id')->all();
+        $registrations = [];
+        foreach ($eventIds as $eventId) {
+            foreach (Arr::random($participantIds, 6) as $participantId) {
+                $registrations[] = [
+                    'event_id' => $eventId,
+                    'participant_id' => $participantId,
+                    'status' => random_int(1, 4) === 1 ? 'waitlisted' : 'registered',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+        }
+        DB::table('event_participant')->insert($registrations);
+
+        // A few notes (polymorphic, from Week 10)
+        Event::find(1)->notes()->create(['body' => 'Bring a valid school ID.']);
+        Event::find(2)->notes()->create(['body' => 'Bring your own laptop.']);
+        Venue::find($venueIds[0])->notes()->create(['body' => 'Projector needs a warm-up.']);
+        Venue::find($venueIds[1])->notes()->create(['body' => 'No outside food allowed.']);
     }
 }
